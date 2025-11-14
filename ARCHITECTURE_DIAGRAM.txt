@@ -1,0 +1,449 @@
+# CI/CD PIPELINE ARCHITECTURE DIAGRAM
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         YOUR LOCAL COMPUTER                                 │
+│                                                                             │
+│  ┌──────────────┐         ┌──────────────┐        ┌──────────────┐        │
+│  │              │         │              │        │              │        │
+│  │   DOCKER     │         │   MINIKUBE   │        │   JENKINS    │        │
+│  │  (Container  │         │  (Local K8s  │        │  (Pipeline   │        │
+│  │   Runtime)   │         │   Cluster)   │        │   Server)    │        │
+│  │              │         │              │        │              │        │
+│  └──────┬───────┘         └───────┬──────┘        └──────┬───────┘        │
+│         │                         │                      │                │
+│         └─────────────────────────┼──────────────────────┘                │
+│                                   │                                       │
+└───────────────────────────────────┼───────────────────────────────────────┘
+                                    │
+                                    │ kubectl commands
+                                    │ docker images
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│                              GITHUB.COM                                    │
+│                                   │                                       │
+│  ┌────────────────────────────────▼────────────────────────────────┐     │
+│  │                    YOUR REPOSITORY                              │     │
+│  │            flask-k8s-ci-cd-assignment                          │     │
+│  │                                                                 │     │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────────┐  ┌──────────┐    │     │
+│  │  │  main   │  │ develop │  │ feature/... │  │ feature/ │    │     │
+│  │  │ branch  │  │ branch  │  │   branch    │  │  branch  │    │     │
+│  │  └────┬────┘  └────┬────┘  └──────┬──────┘  └────┬─────┘    │     │
+│  │       │            │              │              │           │     │
+│  │       └────────────┴──────────────┴──────────────┘           │     │
+│  │                          │                                    │     │
+│  │                  Pull Requests                               │     │
+│  │                          │                                    │     │
+│  │              ┌───────────▼──────────┐                        │     │
+│  │              │  Branch Protection   │                        │     │
+│  │              │  (Admin Approval)    │                        │     │
+│  │              └───────────┬──────────┘                        │     │
+│  └─────────────────────────┬────────────────────────────────────┘     │
+│                             │                                          │
+│                             │ Triggers on Push                         │
+│                             │                                          │
+│  ┌──────────────────────────▼───────────────────────────────────┐     │
+│  │                   GITHUB ACTIONS                             │     │
+│  │                  (Cloud CI Pipeline)                         │     │
+│  │                                                              │     │
+│  │  Step 1: ✓ Checkout Code                                   │     │
+│  │  Step 2: ✓ Setup Python 3.9                               │     │
+│  │  Step 3: ✓ Install Dependencies                           │     │
+│  │  Step 4: ✓ Run Flake8 Linting (max 90 chars)             │     │
+│  │  Step 5: ✓ Run Pytest Unit Tests                         │     │
+│  │  Step 6: ✓ Build Docker Image                            │     │
+│  │                                                           │     │
+│  │  Result: ✅ Green Checkmark or ❌ Red X                  │     │
+│  └───────────────────────────────────────────────────────────┘     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+                                    ║
+                    When merged to main branch
+                                    ║
+                                    ▼
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         JENKINS (LOCAL)                             │
+│                     http://localhost:8080                           │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────┐    │
+│  │               JENKINS PIPELINE                            │    │
+│  │                                                           │    │
+│  │  Stage 1: Build Docker Image                            │    │
+│  │  ┌─────────────────────────────────────────────┐       │    │
+│  │  │ docker build -t flask-k8s-app:latest .     │       │    │
+│  │  └─────────────────┬───────────────────────────┘       │    │
+│  │                    │                                    │    │
+│  │                    ▼                                    │    │
+│  │  Stage 2: Deploy to Kubernetes                         │    │
+│  │  ┌─────────────────────────────────────────────┐       │    │
+│  │  │ kubectl apply -f kubernetes/deployment.yaml │       │    │
+│  │  │ kubectl apply -f kubernetes/service.yaml    │       │    │
+│  │  └─────────────────┬───────────────────────────┘       │    │
+│  │                    │                                    │    │
+│  │                    ▼                                    │    │
+│  │  Stage 3: Verify Deployment                           │    │
+│  │  ┌─────────────────────────────────────────────┐       │    │
+│  │  │ kubectl rollout status deployment/...      │       │    │
+│  │  │ kubectl get pods                           │       │    │
+│  │  │ Verify all pods ready                      │       │    │
+│  │  └─────────────────┬───────────────────────────┘       │    │
+│  │                    │                                    │    │
+│  │                    ▼                                    │    │
+│  │         ✅ Pipeline Success / ❌ Pipeline Failed        │    │
+│  └───────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+
+                            │
+                            │ Deploys to
+                            ▼
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    KUBERNETES (MINIKUBE)                            │
+│                 Your Local K8s Cluster                              │
+│                                                                     │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │                    DEPLOYMENT                              │   │
+│  │         (flask-app-deployment)                            │   │
+│  │                                                           │   │
+│  │   Rolling Update Strategy:                               │   │
+│  │   • maxSurge: 1                                          │   │
+│  │   • maxUnavailable: 1                                    │   │
+│  │                                                           │   │
+│  │   ┌─────────┐  ┌─────────┐  ┌─────────┐               │   │
+│  │   │  POD 1  │  │  POD 2  │  │  POD 3  │               │   │
+│  │   │ Flask   │  │ Flask   │  │ Flask   │               │   │
+│  │   │ App     │  │ App     │  │ App     │               │   │
+│  │   │ :5000   │  │ :5000   │  │ :5000   │               │   │
+│  │   └────┬────┘  └────┬────┘  └────┬────┘               │   │
+│  │        │            │            │                      │   │
+│  │        │   Resource Limits:      │                      │   │
+│  │        │   Memory: 128Mi-256Mi   │                      │   │
+│  │        │   CPU: 100m-500m        │                      │   │
+│  │        │                         │                      │   │
+│  │        └─────────────┬───────────┘                      │   │
+│  │                      │                                  │   │
+│  │              Load Balancer                              │   │
+│  │                      │                                  │   │
+│  │   ┌──────────────────▼──────────────────┐              │   │
+│  │   │         SERVICE                     │              │   │
+│  │   │   (flask-app-service)              │              │   │
+│  │   │                                    │              │   │
+│  │   │   Type: NodePort                   │              │   │
+│  │   │   Port: 80                         │              │   │
+│  │   │   TargetPort: 5000                 │              │   │
+│  │   │   NodePort: 30080                  │              │   │
+│  │   └─────────────────┬──────────────────┘              │   │
+│  │                     │                                 │   │
+│  └─────────────────────┼─────────────────────────────────┘   │
+│                        │                                     │
+│           ┌────────────▼──────────────┐                     │
+│           │   Health Checks           │                     │
+│           │   • Liveness Probe        │                     │
+│           │   • Readiness Probe       │                     │
+│           │   Path: /health           │                     │
+│           └───────────────────────────┘                     │
+│                                                              │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                           │ Accessible via
+                           │
+                    ┌──────▼──────┐
+                    │  USER       │
+                    │  BROWSER    │
+                    │             │
+                    │  Access at: │
+                    │  http://    │
+                    │  MINIKUBE_  │
+                    │  IP:30080   │
+                    └─────────────┘
+
+
+═══════════════════════════════════════════════════════════════
+
+                         WORKFLOW SUMMARY
+
+═══════════════════════════════════════════════════════════════
+
+1. DEVELOPER writes code
+   ↓
+2. DEVELOPER pushes to feature branch
+   ↓
+3. DEVELOPER creates Pull Request to develop
+   ↓
+4. GITHUB ACTIONS automatically tests code (CI)
+   ├─ Runs flake8 linting
+   ├─ Runs pytest tests
+   └─ Builds Docker image
+   ↓
+5. ADMIN reviews Pull Request
+   ├─ Checks code quality
+   ├─ Verifies tests passed
+   └─ Approves or requests changes
+   ↓
+6. ADMIN merges to develop branch
+   ↓
+7. ADMIN creates PR from develop → main
+   ↓
+8. ADMIN merges to main branch
+   ↓
+9. JENKINS automatically deploys (CD)
+   ├─ Builds Docker image
+   ├─ Deploys to Kubernetes
+   └─ Verifies deployment
+   ↓
+10. KUBERNETES runs the app
+    ├─ 3 pods running
+    ├─ Load balancing traffic
+    ├─ Health monitoring
+    └─ Auto-restart if crash
+    ↓
+11. USER accesses app via browser
+    └─ http://MINIKUBE_IP:30080
+
+
+═══════════════════════════════════════════════════════════════
+
+                    KEY KUBERNETES FEATURES
+
+═══════════════════════════════════════════════════════════════
+
+🔄 ROLLING UPDATES
+   Problem: How to update without downtime?
+   Solution: Update pods one by one
+   
+   Old Version (3 pods)    Mixed (4 pods)      New Version (3 pods)
+   🟦 🟦 🟦         →     🟦 🟦 🟩 🟩    →    🟩 🟩 🟩
+   
+   • maxSurge: 1 (can have 4 pods temporarily)
+   • maxUnavailable: 1 (minimum 2 always running)
+
+📊 SCALING
+   Need more power? Just increase replicas!
+   
+   kubectl scale deployment --replicas=5
+   
+   Before:    After:
+   🟩 🟩 🟩  →  🟩 🟩 🟩 🟩 🟩
+   
+   Need less? Decrease replicas!
+   
+   kubectl scale deployment --replicas=2
+   
+   Before:         After:
+   🟩 🟩 🟩 🟩 🟩  →  🟩 🟩
+
+⚖️ LOAD BALANCING
+   Service distributes traffic evenly:
+   
+   User Requests      Load Balancer       Pods
+        │                   │           
+   ┌────┴────┐             │          ┌─────┐
+   │Request 1│─────────────┼─────────►│Pod 1│
+   └─────────┘             │          └─────┘
+   ┌─────────┐             │          ┌─────┐
+   │Request 2│─────────────┼─────────►│Pod 2│
+   └─────────┘             │          └─────┘
+   ┌─────────┐             │          ┌─────┐
+   │Request 3│─────────────┼─────────►│Pod 3│
+   └─────────┘             │          └─────┘
+
+🏥 HEALTH CHECKS
+   Kubernetes monitors pod health:
+   
+   Every 5 seconds: "Are you alive?"
+   Pod: "Yes! /health returns 200 OK"
+   
+   If pod crashes:
+   Kubernetes: "Pod 2 not responding!"
+   ├─ Remove from load balancer
+   └─ Start new pod automatically
+   
+   Result: Zero downtime!
+
+🔙 ROLLBACK
+   New version has bugs? Rollback instantly!
+   
+   Version 2 (buggy)          Version 1 (stable)
+   🟥 🟥 🟥         →         🟩 🟩 🟩
+   
+   kubectl rollout undo deployment/flask-app-deployment
+
+💾 RESOURCE MANAGEMENT
+   Each pod guaranteed:
+   • CPU: 100m (0.1 cores)
+   • Memory: 128Mi
+   
+   Pod cannot exceed:
+   • CPU: 500m (0.5 cores)
+   • Memory: 256Mi
+   
+   Prevents one app from hogging all resources!
+
+
+═══════════════════════════════════════════════════════════════
+
+                    FILE STRUCTURE OVERVIEW
+
+═══════════════════════════════════════════════════════════════
+
+flask-k8s-ci-cd-assignment/
+│
+├── app.py                    ← Flask web application
+│                                • 3 endpoints: /, /health, /info
+│                                • Function for testing
+│
+├── test_app.py               ← Unit tests
+│                                • Tests add_numbers function
+│                                • Tests Flask endpoints
+│
+├── requirements.txt          ← Python dependencies
+│                                • Flask
+│                                • pytest
+│                                • flake8
+│
+├── Dockerfile                ← Container instructions
+│                                • Multi-stage build
+│                                • Python 3.9 base
+│                                • Exposes port 5000
+│
+├── Jenkinsfile               ← CD pipeline definition
+│                                • 3 stages: Build, Deploy, Verify
+│                                • Runs when merged to main
+│
+├── README.md                 ← Documentation
+│                                • Setup instructions
+│                                • How to use
+│                                • Troubleshooting
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml            ← CI pipeline definition
+│                                • Runs on every push
+│                                • Tests + builds
+│
+└── kubernetes/
+    ├── deployment.yaml       ← Pod configuration
+    │                            • 3 replicas
+    │                            • Rolling updates
+    │                            • Resource limits
+    │                            • Health checks
+    │
+    └── service.yaml          ← Network configuration
+                                 • NodePort type
+                                 • Port 30080
+                                 • Load balancing
+
+
+═══════════════════════════════════════════════════════════════
+
+                    TECHNOLOGIES EXPLAINED
+
+═══════════════════════════════════════════════════════════════
+
+🐍 PYTHON + FLASK
+   • Python: Programming language
+   • Flask: Web framework (makes building APIs easy)
+   
+🐳 DOCKER
+   • Packages app + dependencies into "container"
+   • Like a lightweight virtual machine
+   • Works same on any computer
+   
+☸️ KUBERNETES (K8s)
+   • Orchestrates (manages) containers
+   • Handles scaling, updates, health
+   • Industry standard for production
+   
+🎯 MINIKUBE
+   • Mini Kubernetes on your laptop
+   • For testing before real cloud
+   • Single-node cluster
+   
+🔧 KUBECTL
+   • Command-line tool for Kubernetes
+   • Like a remote control
+   
+🤖 JENKINS
+   • Automation server
+   • Runs deployment pipeline
+   • Connects GitHub → Kubernetes
+   
+😺 GITHUB
+   • Code storage + collaboration
+   • Version control with Git
+   
+⚡ GITHUB ACTIONS
+   • Cloud CI/CD (testing) service
+   • Runs automatically on code push
+   • Free for public repos
+
+
+═══════════════════════════════════════════════════════════════
+
+                    COMMON TERMINOLOGY
+
+═══════════════════════════════════════════════════════════════
+
+CI/CD:
+  Continuous Integration + Continuous Delivery
+  Automate testing and deployment
+
+Container:
+  Package containing app + dependencies
+
+Image:
+  Blueprint for creating containers
+  (like a recipe)
+
+Pod:
+  Smallest unit in Kubernetes
+  (usually 1 container)
+
+Deployment:
+  Manages a set of identical pods
+
+Service:
+  Load balancer for pods
+  (single entry point)
+
+Node:
+  A machine (physical or virtual)
+  Runs pods
+
+Cluster:
+  Set of nodes working together
+
+Namespace:
+  Virtual cluster within cluster
+  (for organization)
+
+Rolling Update:
+  Gradual replacement of old pods
+  with new ones (zero downtime)
+
+Scaling:
+  Changing number of pod replicas
+
+Rollback:
+  Reverting to previous version
+
+Health Check:
+  Automatic testing if pod is alive
+
+Resource Limit:
+  Max CPU/memory a pod can use
+
+NodePort:
+  Exposes service on static port
+  (30000-32767)
+
+Replica:
+  Copy of a pod
+
+
+═══════════════════════════════════════════════════════════════
+
+This diagram is your roadmap! Keep it handy! 🗺️

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app-deployment
+  labels:
+    app: flask-app
+spec:
+  replicas: 3  # Run 3 copies of the app for high availability
+  selector:
+    matchLabels:
+      app: flask-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Max 1 extra pod during update
+      maxUnavailable: 1  # Max 1 pod can be down during update
+  template:
+    metadata:
+      labels:
+        app: flask-app
+    spec:
+      containers:
+      - name: flask-container
+        image: flask-k8s-app:latest
+        imagePullPolicy: Never  # Use local image (for minikube)
+        ports:
+        - containerPort: 5000
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"  # Minimum memory needed
+            cpu: "100m"      # 0.1 CPU cores
+          limits:
+            memory: "256Mi"  # Maximum memory allowed
+            cpu: "500m"      # 0.5 CPU cores
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 3
